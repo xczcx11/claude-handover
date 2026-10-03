@@ -53,4 +53,36 @@ function writeState(statePath, state) {
     JSON.stringify({ state: state, at: new Date().toISOString() }, null, 2), 'utf8');
 }
 
-module.exports = { STATE, resolvePaths, readState, writeState };
+const HOOK_EVENT = 'MessageDisplay';
+
+/** 尾灯那条 hook 的命令串（★ 路径里的反斜杠一律转正斜杠） */
+function hookCommand(handoverDir) {
+  const script = path.join(handoverDir, 'ctx_msgdisplay_hook.js').split(path.sep).join('/');
+  return 'node "' + script + '"';
+}
+
+/** ★ 幂等合并：同样的 command 已存在就不再加（防重复触发） */
+function mergeHook(settings, eventName, command) {
+  const next = JSON.parse(JSON.stringify(settings || {}));
+  if (!next.hooks) next.hooks = {};
+  if (!Array.isArray(next.hooks[eventName])) next.hooks[eventName] = [];
+  const exists = next.hooks[eventName].some(function (g) {
+    return Array.isArray(g.hooks) && g.hooks.some(function (h) { return h.command === command; });
+  });
+  if (!exists) {
+    next.hooks[eventName].push({ hooks: [{ type: 'command', command: command, timeout: 10 }] });
+  }
+  return next;
+}
+
+/** 摘掉某个事件的全部 hook（本机迁移用它摘 Stop） */
+function removeEvent(settings, eventName) {
+  const next = JSON.parse(JSON.stringify(settings || {}));
+  if (next.hooks && next.hooks[eventName]) delete next.hooks[eventName];
+  return next;
+}
+
+module.exports = {
+  STATE, resolvePaths, readState, writeState,
+  HOOK_EVENT, hookCommand, mergeHook, removeEvent,
+};
