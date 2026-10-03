@@ -1,0 +1,7 @@
+# 一律按 LF 存 —— 消除 Windows 上那串 "LF will be replaced by CRLF" 警告，
+# 也让脚本在别的机器（macOS / Linux）上 checkout 出来就是对的换行符。
+* text=auto
+*.js   text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+LICENSE text eol=lf

@@ -14,7 +14,7 @@
 ## 装
 
 ```bash
-git clone <本仓地址> ~/.claude/skills/project-checkpoint
+git clone https://github.com/xczcx11/claude-handover.git ~/.claude/skills/project-checkpoint
 ```
 
 然后跟 Claude 说「**断点存档**」，它会引导你装尾灯（检测 → 问你 → 装 → 提示重启）。
