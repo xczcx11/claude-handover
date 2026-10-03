@@ -1,0 +1,4 @@
+# 运行时产物 —— 双保险（它们本就不在仓里，防手滑）
+_handover_state.json
+_hook_trace_v1.log
+node_modules/
