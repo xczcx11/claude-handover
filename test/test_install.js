@@ -104,3 +104,39 @@ test('★ buildReport: 运行时副本陈旧 ⇒ runtime.ok=false 且报出两�
   assert.equal(rt.ok, false);
   assert.match(rt.detail, /v-old/);
 });
+
+test('★ apply: 全新机器 ⇒ 拷脚本 + 建 settings.json + marker=installed_unverified', function () {
+  const p = inst.resolvePaths(tmpHome());
+  inst.apply(p);
+  assert.ok(fs.existsSync(path.join(p.handoverDir, 'ctx_core.js')));
+  assert.ok(fs.existsSync(path.join(p.handoverDir, 'ctx_msgdisplay_hook.js')));
+  assert.ok(fs.existsSync(path.join(p.handoverDir, 'ctx_config.json')));
+  const s = JSON.parse(fs.readFileSync(p.settingsPath, 'utf8'));
+  assert.equal(s.hooks.MessageDisplay.length, 1);
+  assert.equal(inst.readState(p.statePath), 'installed_unverified');
+});
+
+test('★ apply 幂等：连跑两次 ⇒ settings.json 里仍只有 1 条', function () {
+  const p = inst.resolvePaths(tmpHome());
+  inst.apply(p);
+  inst.apply(p);
+  const s = JSON.parse(fs.readFileSync(p.settingsPath, 'utf8'));
+  assert.equal(s.hooks.MessageDisplay.length, 1);
+});
+
+test('★ apply: 不覆盖已有的 ctx_config.json（本机调过的窗口值要保住）', function () {
+  const p = inst.resolvePaths(tmpHome());
+  fs.mkdirSync(p.handoverDir, { recursive: true });
+  fs.writeFileSync(path.join(p.handoverDir, 'ctx_config.json'), '{"context_window": 777}', 'utf8');
+  inst.apply(p);
+  assert.match(fs.readFileSync(path.join(p.handoverDir, 'ctx_config.json'), 'utf8'), /777/);
+});
+
+test('apply: 保住 settings.json 里原有的其它键', function () {
+  const p = inst.resolvePaths(tmpHome());
+  fs.mkdirSync(p.claudeDir, { recursive: true });
+  fs.writeFileSync(p.settingsPath, JSON.stringify({ env: { K: 'V' } }), 'utf8');
+  inst.apply(p);
+  const s = JSON.parse(fs.readFileSync(p.settingsPath, 'utf8'));
+  assert.deepEqual(s.env, { K: 'V' });
+});

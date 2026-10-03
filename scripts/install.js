@@ -173,8 +173,39 @@ function formatReport(rep) {
   return lines.join('\n');
 }
 
+function readJsonOr(file, dflt) {
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { return dflt; }
+}
+
+/** ★ 安装：拷脚本 → 写配置(不覆盖已有) → 幂等合并 settings.json → marker=unverified */
+function apply(paths) {
+  fs.mkdirSync(paths.handoverDir, { recursive: true });
+
+  RUNTIME_SCRIPTS.forEach(function (f) {
+    fs.copyFileSync(path.join(REPO_ROOT, 'scripts', f), path.join(paths.handoverDir, f));
+  });
+
+  const cfgDst = path.join(paths.handoverDir, 'ctx_config.json');
+  if (!fs.existsSync(cfgDst)) {
+    fs.copyFileSync(path.join(REPO_ROOT, 'templates', 'ctx_config.json'), cfgDst);
+  }
+
+  // ★ 已知坑：settings.json 不存在时必须【新建】，否则后续一堆脚本会静默跳过
+  if (!fs.existsSync(paths.settingsPath)) {
+    fs.mkdirSync(paths.claudeDir, { recursive: true });
+    fs.writeFileSync(paths.settingsPath, '{}\n', 'utf8');
+  }
+  const before = readJsonOr(paths.settingsPath, {});
+  const after = mergeHook(before, HOOK_EVENT, hookCommand(paths.handoverDir));
+  fs.writeFileSync(paths.settingsPath, JSON.stringify(after, null, 2) + '\n', 'utf8');
+
+  writeState(paths.statePath, STATE.UNVERIFIED);
+  return { ok: true, settingsPath: paths.settingsPath, handoverDir: paths.handoverDir };
+}
+
 module.exports = {
   STATE, resolvePaths, readState, writeState,
   HOOK_EVENT, hookCommand, mergeHook, removeEvent,
   REPO_ROOT, RUNTIME_SCRIPTS, buildReport, formatReport,
+  apply,
 };
