@@ -74,3 +74,33 @@ test('hookCommand: 反斜杠转正斜杠且带引号', function () {
   const cmd = inst.hookCommand('C:\\Users\\x\\.claude\\handover');
   assert.equal(cmd, 'node "C:/Users/x/.claude/handover/ctx_msgdisplay_hook.js"');
 });
+
+test('★ buildReport: 全新机器 ⇒ 未装 + 明说 settings.json 必须新建', function () {
+  const rep = inst.buildReport(inst.resolvePaths(tmpHome()));
+  assert.deepEqual(rep.items.map(function (i) { return i.name; }),
+    ['node', 'claudeDir', 'settings.json', 'hook', 'runtime', 'state']);
+  const sj = rep.items.find(function (i) { return i.name === 'settings.json'; });
+  assert.equal(sj.ok, false);
+  assert.match(sj.advice, /新建/);
+  const rt = rep.items.find(function (i) { return i.name === 'runtime'; });
+  assert.equal(rt.ok, false);
+});
+
+test('buildReport: 不写任何东西（只读）', function () {
+  const p = inst.resolvePaths(tmpHome());
+  inst.buildReport(p);
+  assert.equal(fs.existsSync(p.claudeDir), false);
+});
+
+test('★ buildReport: 运行时副本陈旧 ⇒ runtime.ok=false 且报出两个版本', function () {
+  const home = tmpHome();
+  const p = inst.resolvePaths(home);
+  fs.mkdirSync(p.handoverDir, { recursive: true });
+  for (const f of ['ctx_core.js', 'ctx_msgdisplay_hook.js']) {
+    fs.writeFileSync(path.join(p.handoverDir, f), 'module.exports={VERSION:"v-old"};', 'utf8');
+  }
+  const rep = inst.buildReport(p);
+  const rt = rep.items.find(function (i) { return i.name === 'runtime'; });
+  assert.equal(rt.ok, false);
+  assert.match(rt.detail, /v-old/);
+});

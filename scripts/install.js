@@ -82,7 +82,99 @@ function removeEvent(settings, eventName) {
   return next;
 }
 
+const REPO_ROOT = path.join(__dirname, '..');
+const RUNTIME_SCRIPTS = ['ctx_core.js', 'ctx_msgdisplay_hook.js'];
+
+function nodeOnPath() {
+  try {
+    const r = require('child_process').spawnSync('node', ['--version'], { encoding: 'utf8' });
+    return r.status === 0 ? String(r.stdout).trim() : null;
+  } catch (e) { return null; }
+}
+
+function loadVersion(file) {
+  try { return require(file).VERSION || null; } catch (e) { return null; }
+}
+
+function mkItem(name, ok, detail, err, advice) {
+  return { name: name, ok: ok, detail: detail, err: err || '', advice: advice || '' };
+}
+
+/**
+ * ★ 只读检测。报告结构固定为 items[]：{name, ok, detail, err, advice}
+ *   哪一步 = name · 本机实测值 = detail · 原始错误 = err · 建议怎么改 = advice
+ * 名字固定六个：node / claudeDir / settings.json / hook / runtime / state
+ */
+function buildReport(paths) {
+  const items = [];
+
+  const nv = nodeOnPath();
+  items.push(mkItem('node', !!nv, nv || '(未找到)', '',
+    nv ? '' : '先安装 Node.js，并确保 node 在 PATH 上（hook 由 shell 调用 node）'));
+
+  const cd = fs.existsSync(paths.claudeDir);
+  items.push(mkItem('claudeDir', cd, paths.claudeDir, '',
+    cd ? '' : '目录不存在 ⇒ --apply 会创建'));
+
+  const sjExist = fs.existsSync(paths.settingsPath);
+  items.push(sjExist
+    ? mkItem('settings.json', true, paths.settingsPath, '', '')
+    : mkItem('settings.json', false, '(不存在)', '',
+        '★ 必须【新建】—— 已知坑：settings.json 不存在时，安装脚本会静默跳过'));
+
+  let hookItem;
+  if (sjExist) {
+    try {
+      const s = JSON.parse(fs.readFileSync(paths.settingsPath, 'utf8'));
+      const cmd = hookCommand(paths.handoverDir);
+      const groups = (s.hooks && s.hooks[HOOK_EVENT]) || [];
+      const hit = groups.filter(function (g) {
+        return Array.isArray(g.hooks) && g.hooks.some(function (h) { return h.command === cmd; });
+      });
+      const ok = hit.length === 1;
+      hookItem = mkItem('hook', ok,
+        ok ? '已注册，1 条' : (hit.length === 0 ? '未注册' : '★ 重复 ' + hit.length + ' 条'),
+        '', ok ? '' : '--apply 会写入 1 条 MessageDisplay');
+    } catch (e) {
+      hookItem = mkItem('hook', false, 'settings.json 无法解析', String(e.message),
+        '人工修好 JSON 语法后重跑 --check');
+    }
+  } else {
+    hookItem = mkItem('hook', false, '(settings.json 不存在，无从判断)', '',
+      '--apply 会写入 1 条 MessageDisplay');
+  }
+  items.push(hookItem);
+
+  let rtOk = false, rtDetail = '未安装（运行时目录不存在）', rtErr = '';
+  if (fs.existsSync(paths.handoverDir)) {
+    const rt = loadVersion(path.join(paths.handoverDir, 'ctx_core.js'));
+    const rp = loadVersion(path.join(REPO_ROOT, 'scripts', 'ctx_core.js'));
+    rtOk = !!rt && rt === rp;
+    rtDetail = 'runtime=' + (rt || '(读不到)') + ' repo=' + (rp || '(读不到)');
+    rtErr = rtOk ? '' : '运行时副本与仓里不一致（或读不到版本）';
+  }
+  items.push(mkItem('runtime', rtOk, rtDetail, rtErr,
+    rtOk ? '' : '--apply 会把仓里的脚本覆盖拷过去'));
+
+  const st = readState(paths.statePath);
+  items.push(mkItem('state', true, st, '', ''));
+
+  return { items: items, allOk: items.every(function (i) { return i.ok; }) };
+}
+
+function formatReport(rep) {
+  const lines = ['【断点交接 · 安装自检】'];
+  rep.items.forEach(function (i) {
+    lines.push('  [' + (i.ok ? 'OK ' : '★FAIL') + '] ' + i.name + ': ' + i.detail);
+    if (!i.ok && i.err) lines.push('          原始错误: ' + i.err);
+    if (!i.ok && i.advice) lines.push('          ⇒ ' + i.advice);
+  });
+  lines.push('  ' + (rep.allOk ? '⇒ 全绿' : '⇒ 有 FAIL，见上方 ⇒'));
+  return lines.join('\n');
+}
+
 module.exports = {
   STATE, resolvePaths, readState, writeState,
   HOOK_EVENT, hookCommand, mergeHook, removeEvent,
+  REPO_ROOT, RUNTIME_SCRIPTS, buildReport, formatReport,
 };
