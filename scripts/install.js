@@ -203,9 +203,70 @@ function apply(paths) {
   return { ok: true, settingsPath: paths.settingsPath, handoverDir: paths.handoverDir };
 }
 
+const BEGIN = '<!-- INSTALL:BEGIN -->';
+const END = '<!-- INSTALL:END -->';
+
+/** ★ 剥掉 SKILL.md 的安装段（含标记本身）。没有标记 ⇒ 原样返回 */
+function stripInstallSection(md) {
+  const b = md.indexOf(BEGIN);
+  const e = md.indexOf(END);
+  if (b === -1 || e === -1 || e < b) return md;
+  return md.slice(0, b) + md.slice(e + END.length);
+}
+
+function finalize(paths, repoRoot) {
+  const repo = repoRoot || REPO_ROOT;
+
+  writeState(paths.statePath, STATE.VERIFIED);
+
+  const instPath = path.join(repo, 'scripts', 'install.js');
+  if (fs.existsSync(instPath)) fs.unlinkSync(instPath);
+
+  const skillPath = path.join(repo, 'SKILL.md');
+  if (fs.existsSync(skillPath)) {
+    const md = fs.readFileSync(skillPath, 'utf8');
+    fs.writeFileSync(skillPath, stripInstallSection(md), 'utf8');
+  }
+  return { ok: true };
+}
+
+/** CLI：--check / --apply / --finalize；home 可用 HANDOVER_HOME 覆盖（便于测试 / 多环境） */
+function main(argv) {
+  const flag = argv[0] || '--check';
+  const paths = resolvePaths(process.env.HANDOVER_HOME || os.homedir());
+
+  if (flag === '--check') {
+    const rep = buildReport(paths);
+    process.stdout.write(formatReport(rep) + '\n');
+    process.exitCode = rep.allOk ? 0 : 1;
+    return;
+  }
+  if (flag === '--apply') {
+    apply(paths);
+    process.stdout.write('【已安装】\n  ' + paths.handoverDir + '\n' +
+      '  ★ 请【重启 Claude】—— settings.json 的 hook 要重启才武装。\n' +
+      '  重启后回来跟 Claude 说一声，它会把安装件收尾删掉。\n');
+    return;
+  }
+  if (flag === '--finalize') {
+    finalize(paths);
+    process.stdout.write('【已收尾】marker=verified，install.js 已删除，日常调用不再检测。\n');
+    return;
+  }
+  process.stderr.write('用法: node install.js --check | --apply | --finalize\n');
+  process.exitCode = 2;
+}
+
+if (require.main === module) {
+  try { main(process.argv.slice(2)); } catch (e) {
+    process.stderr.write('【安装失败】' + e.message + '\n' + (e.stack || '') + '\n');
+    process.exitCode = 3;
+  }
+}
+
 module.exports = {
   STATE, resolvePaths, readState, writeState,
   HOOK_EVENT, hookCommand, mergeHook, removeEvent,
   REPO_ROOT, RUNTIME_SCRIPTS, buildReport, formatReport,
-  apply,
+  apply, finalize, stripInstallSection, main,
 };

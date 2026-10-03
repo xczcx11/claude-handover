@@ -140,3 +140,23 @@ test('apply: 保住 settings.json 里原有的其它键', function () {
   const s = JSON.parse(fs.readFileSync(p.settingsPath, 'utf8'));
   assert.deepEqual(s.env, { K: 'V' });
 });
+
+test('★ finalize: marker→verified + 删 install.js + 剥 SKILL.md 安装段', function () {
+  const p = inst.resolvePaths(tmpHome());
+  const fakeRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'handover-repo-'));
+  fs.mkdirSync(path.join(fakeRepo, 'scripts'), { recursive: true });
+  fs.writeFileSync(path.join(fakeRepo, 'scripts', 'install.js'), 'x', 'utf8');
+  fs.writeFileSync(path.join(fakeRepo, 'SKILL.md'),
+    '前\n<!-- INSTALL:BEGIN -->\n中间\n<!-- INSTALL:END -->\n后\n', 'utf8');
+
+  inst.finalize(p, fakeRepo);
+
+  assert.equal(inst.readState(p.statePath), 'verified');
+  assert.equal(fs.existsSync(path.join(fakeRepo, 'scripts', 'install.js')), false);
+  const md = fs.readFileSync(path.join(fakeRepo, 'SKILL.md'), 'utf8');
+  assert.equal(md, '前\n\n后\n');
+});
+
+test('stripInstallSection: 没有标记 ⇒ 原样返回', function () {
+  assert.equal(inst.stripInstallSection('abc\n'), 'abc\n');
+});
